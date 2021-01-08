@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.3)
 project(sthor VERSION 1.0.0 LANGUAGES C)
 
+include(ExternalProject)
+
+set(mtd-utils_BIN ${CMAKE_CURRENT_BINARY_DIR}/mtd-utils)
+set(mtd-utils_SOURCE ${mtd-utils_BIN}/src/mtd-utils)
+set(mtd-utils_INCLUDE ${mtd-utils_SOURCE}/include)
+
 list(APPEND mtd-utils_CONFIG_ARGS 
     --target=arm-poky-linux-gnueabi 
     --host=arm-poky-linux-gnueabi 
@@ -8,35 +14,32 @@ list(APPEND mtd-utils_CONFIG_ARGS
     --without-zstd 
     --without-ubifs 
     --disable-tests
+    --enable-shared
+    --prefix=${mtd-utils_BIN}
     )
 
-include(ExternalProject)
+
+#if (EXISTS ${mtd-utils_INCLUDE})
 ExternalProject_Add(mtd-utils
-    GIT_REPOSITORY git://git.infradead.org/mtd-utils.git
-    GIT_TAG 7b986779342021bda87c04da3bf729718736d8ab # TAG 2.1.2
-	INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/mtd-utils
-    CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh 
-    COMMAND <SOURCE_DIR>/configure ${mtd-utils_CONFIG_ARGS}
+    URL https://github.com/sigma-star/mtd-utils/archive/v2.1.2.tar.gz
+    PREFIX ${mtd-utils_BIN}
+    CONFIGURE_COMMAND cd ${mtd-utils_SOURCE} && ./autogen.sh && ./configure ${mtd-utils_CONFIG_ARGS}
+    BUILD_COMMAND cd ${mtd-utils_SOURCE} && make
+    INSTALL_COMMAND cd ${mtd-utils_SOURCE} && make install
+    BUILD_BYPRODUCTS ${mtd-utils_SOURCE}/libmtd.a
+    )
+#endif()
+
+include(CMakePrintHelpers)
+
+add_executable(sthor
+    src/main.c
     )
 
-#include(FetchContent) 
-#FetchContent_Declare(mtd-utils
-    #GIT_REPOSITORY git://git.infradead.org/mtd-utils.git
-    #GIT_TAG 7b986779342021bda87c04da3bf729718736d8ab # TAG 2.1.2
-    #)
+add_dependencies(sthor mtd-utils)
 
-#FetchContent_GetProperties(mtd-utils)
+target_include_directories(sthor PRIVATE ${mtd-utils_INCLUDE})
+target_link_libraries(sthor PRIVATE ${mtd-utils_SOURCE}/libmtd.a)
 
-#if (NOT mtd-utils_POPULATED)
-    #FetchContent_Populate(mtd-utils)
-
-    #add_library(mtd-libmtd 
-        #${mtd-utils_SOURCE_DIR}/lib/libmtd.c
-        #${mtd-utils_SOURCE_DIR}/lib/libfec.c
-        #${mtd-utils_SOURCE_DIR}/lib/common.c
-        #${mtd-utils_SOURCE_DIR}/lib/libcrc32.c
-        #${mtd-utils_SOURCE_DIR}/lib/libmtd_legacy.c
-        #${mtd-utils_SOURCE_DIR}/lib/libmtd_int.h
-        #)
-    #target_include_directories(mtd-libmtd PRIVATE ${mtd-utils_SOURCE_DIR}/include)
-#endif()
+cmake_print_variables(mtd-utils_INCLUDE)
+cmake_print_properties(TARGETS sthor PROPERTIES INCLUDE_DIRECTORIES LINK_DIRECTORIES)
