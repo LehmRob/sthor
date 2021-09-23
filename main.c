@@ -12,25 +12,28 @@
 
 
 int main(int ac, char *av[]) {
-    (void) av;
-    if (ac < 4) {
-        fprintf(stderr, "Not enough arguments.\n");
-        return -EINVAL;
-    }
+    (void) ac;
 
-    printf("Erasing kernel flash partition\n");
-    int rc = flash_erase("/dev/mtd1");
-    if (rc != 0) {
-        fprintf(stderr, "can't delete mtd1: %s\n", strerror(rc));
-        return -rc;
-    }
+    flash_print_information(av[1]);
 
-    printf("Erasing devicetree flash partition\n");
-    rc = flash_erase("/dev/mtd2");
-    if (rc != 0) {
-        fprintf(stderr, "can't delete mtd1: %s\n", strerror(rc));
-        return -rc;
-    }
+    // if (ac < 4) {
+    //     fprintf(stderr, "Not enough arguments.\n");
+    //     return -EINVAL;
+    // }
+
+    // printf("Erasing kernel flash partition\n");
+    // int rc = flash_erase("/dev/mtd1");
+    // if (rc != 0) {
+    //     fprintf(stderr, "can't delete mtd1: %s\n", strerror(rc));
+    //     return -rc;
+    // }
+
+    // printf("Erasing devicetree flash partition\n");
+    // rc = flash_erase("/dev/mtd2");
+    // if (rc != 0) {
+    //     fprintf(stderr, "can't delete mtd1: %s\n", strerror(rc));
+    //     return -rc;
+    // }
 
     return 0;
 }
