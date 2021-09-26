@@ -14,6 +14,7 @@
 #include <unistd.h>
 
 #include <libmtd.h>
+#include <mtd/mtd-user.h>
 
 struct flash {
     libmtd_t mtd_desc;
@@ -102,7 +103,7 @@ int flash_write(const char *mtd_path, const char *image_path) {
         return rc;
     }
 
-    int input_fd = open(image_path, O_RDONLY);
+    FILE *input_fd = fopen(image_path, "r");
     if (input_fd < 0) {
         flash_destroy(&flash);
         return input_fd;
@@ -123,10 +124,6 @@ int flash_write(const char *mtd_path, const char *image_path) {
     }
 
     size_t page_size = flash.mtd.min_io_size;
-    size_t block_size = flash.mtd.eb_size;
-    size_t block_count = flash.mtd.eb_cnt;
-    off_t offset = 0;
-
     uint8_t *page_buffer = malloc(page_size);
     if (page_buffer == NULL) {
         flash_destroy(&flash);
@@ -134,32 +131,32 @@ int flash_write(const char *mtd_path, const char *image_path) {
         return -ENOMEM;
     }
 
-    memset(page_buffer, 0, page_size);
+    memset(page_buffer, 0xff, page_size);
+
+    size_t block_size = flash.mtd.eb_size;
+    size_t block_count = flash.mtd.eb_cnt;
+    size_t written_size = 0; // size in bytes
+    off_t offset = 0; // we start at the beginning
 
     // TODO implement the writing of the image into the mtd device
     // TODO define criterie for the loop 
-    // NOTE there are two methods to continue here. first we keep track of the
-    //      written size. second we count the written erase blocks and calculate
-    //      the necessary erase blocks in the first place
     // NOTE the hole erase block needs to be erased but we can write dedicated pages
-    // off_t offset = 0;
-    size_t written_size = 0; // size in bytes
-    // size_t written_blocks = 0; // number of blocks written
+    // iterate over the whole image size
 
     while (written_size < image_size) {
         // search for the first good block
-
+        int current_block = offset / block_size;
         bool good_block_found = false;
 
-        while (current_block < flash.mtd.eb_cnt) {
-            int rc = mtd_is_bad(&flash.mtd, flash.fd, offset / block_size);
+        while ((current_block < flash.mtd.eb_cnt) && !good_block_found) {
+            int rc = mtd_is_bad(&flash.mtd, flash.fd, current_block);
             if (rc < 0) {
                 flash_destroy(&flash);
                 close(input_fd);
                 return -EIO;
             } else if (rc == 1) {
                 // bad block found
-                current_block++;               
+                current_block++;
             } else {
                 good_block_found = true;
             }
@@ -170,6 +167,14 @@ int flash_write(const char *mtd_path, const char *image_path) {
             flash_destroy(&flash);
             close(input_fd);
             return -EIO;
+        }
+
+        // read page size from the file
+        size_t rbytes = read(input_fd, page_buffer, page_size);
+        if (rbytes < 0) {
+            flash_destroy(&flash);
+            close(input_fd);
+            return -EIO
         }
 
 
