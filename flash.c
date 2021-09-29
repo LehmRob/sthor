@@ -95,6 +95,30 @@ static bool file_size(int fd, size_t *size) {
     return true;
 }
 
+// scans the mtd device for a good block
+static int scan_for_bad_block(struct flash *flash, off_t *start_offset) {
+    size_t block_count = flash->mtd.eb_cnt;
+
+    bool good_block_found = false;
+    // TODO: Loopcount needs to be set by the current value of start_offset
+    for (int block = 0 ; (block < block_count) && !good_block_found; block++) {
+        int rc = mtd_is_bad(&flash->mtd, flash->fd, block);
+        if (rc < 0) {
+            // error happened;
+            return -1;
+        } else if (ret == 0) {
+            good_block_found = true;
+            *start_offset = block * flash->mtd.eb_size;
+        }
+    }
+
+    if (good_block_found) {
+        return 0;
+    }
+
+    return 1;
+}
+
 int flash_write(const char *mtd_path, const char *image_path) {
     struct flash flash;
 
