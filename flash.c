@@ -98,10 +98,10 @@ static bool file_size(int fd, size_t *size) {
 // scans the mtd device for a good block
 static int scan_for_bad_block(struct flash *flash, off_t *start_offset) {
     size_t block_count = flash->mtd.eb_cnt;
+    size_t block_start = *start_offset / mtd.eb_size;
 
     bool good_block_found = false;
-    // TODO: Loopcount needs to be set by the current value of start_offset
-    for (int block = 0 ; (block < block_count) && !good_block_found; block++) {
+    for (int block = block_start ; (block < block_count) && !good_block_found; block++) {
         int rc = mtd_is_bad(&flash->mtd, flash->fd, block);
         if (rc < 0) {
             // error happened;
@@ -160,7 +160,7 @@ int flash_write(const char *mtd_path, const char *image_path) {
     size_t block_size = flash.mtd.eb_size;
     size_t block_count = flash.mtd.eb_cnt;
     size_t written_size = 0; // size in bytes
-    off_t offset = 0; // we start at the beginning
+    off_t address = 0; // current address
 
     // TODO implement the writing of the image into the mtd device
     // TODO define criterie for the loop 
@@ -168,30 +168,21 @@ int flash_write(const char *mtd_path, const char *image_path) {
     // iterate over the whole image size
 
     while (written_size < image_size) {
-        // search for the first good block
-        int current_block = offset / block_size;
-        bool good_block_found = false;
-
-        while ((current_block < flash.mtd.eb_cnt) && !good_block_found) {
-            int rc = mtd_is_bad(&flash.mtd, flash.fd, current_block);
-            if (rc < 0) {
-                flash_destroy(&flash);
-                close(input_fd);
-                return -EIO;
-            } else if (rc == 1) {
-                // bad block found
-                current_block++;
-            } else {
-                good_block_found = true;
-            }
-        }
-
-        if (!good_block_found) {
-            // no more good blocks found
+        int rc = scan_for_bad_block(&flash, &address);
+        if (rc == 1) {
+            // no more good blocks found for device
+            flash_destroy(&flash);
+            close(input_fd);
+            return -ENOMEM;
+        } else if (rc == -1) {
+            // error happend
             flash_destroy(&flash);
             close(input_fd);
             return -EIO;
         }
+        
+        // reading a page into the internal buffer and
+        // writes it until the block is full.
 
         // read page size from the file
         size_t rbytes = read(input_fd, page_buffer, page_size);
