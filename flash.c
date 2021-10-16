@@ -98,15 +98,15 @@ static bool file_size(int fd, size_t *size) {
 // scans the mtd device for a good block
 static int scan_for_bad_block(struct flash *flash, off_t *start_offset) {
     size_t block_count = flash->mtd.eb_cnt;
-    size_t block_start = *start_offset / mtd.eb_size;
+    size_t block_start = *start_offset / flash->mtd.eb_size;
 
     bool good_block_found = false;
-    for (int block = block_start ; (block < block_count) && !good_block_found; block++) {
+    for (size_t block = block_start ; (block < block_count) && !good_block_found; block++) {
         int rc = mtd_is_bad(&flash->mtd, flash->fd, block);
         if (rc < 0) {
             // error happened;
             return -1;
-        } else if (ret == 0) {
+        } else if (rc == 0) {
             good_block_found = true;
             *start_offset = block * flash->mtd.eb_size;
         }
@@ -127,7 +127,7 @@ int flash_write(const char *mtd_path, const char *image_path) {
         return rc;
     }
 
-    FILE *input_fd = fopen(image_path, "r");
+    int input_fd = open(image_path, O_RDONLY);
     if (input_fd < 0) {
         flash_destroy(&flash);
         return input_fd;
@@ -158,14 +158,9 @@ int flash_write(const char *mtd_path, const char *image_path) {
     memset(page_buffer, 0xff, page_size);
 
     size_t block_size = flash.mtd.eb_size;
-    size_t block_count = flash.mtd.eb_cnt;
+    /*size_t block_count = flash.mtd.eb_cnt;*/
     size_t written_size = 0; // size in bytes
     off_t address = 0; // current address
-
-    // TODO implement the writing of the image into the mtd device
-    // TODO define criterie for the loop 
-    // NOTE the hole erase block needs to be erased but we can write dedicated pages
-    // iterate over the whole image size
 
     while (written_size < image_size) {
         int rc = scan_for_bad_block(&flash, &address);
@@ -180,19 +175,21 @@ int flash_write(const char *mtd_path, const char *image_path) {
             close(input_fd);
             return -EIO;
         }
-        
-        // reading a page into the internal buffer and
-        // writes it until the block is full.
 
-        // read page size from the file
-        size_t rbytes = read(input_fd, page_buffer, page_size);
-        if (rbytes < 0) {
-            flash_destroy(&flash);
-            close(input_fd);
-            return -EIO
+        for (size_t bsize = 0; bsize < block_size; bsize += page_size) {
+            ssize_t rbytes = read(input_fd, page_buffer + bsize, page_size);
+            if (rbytes == 0) {
+                // EOF
+                break;
+            } else if (rbytes < 0) {
+                // Error Occured
+                 flash_destroy(&flash);
+                 close(input_fd);
+                 return -EIO;
+            }
+
+
         }
-
-
     }
 
     return 0;
