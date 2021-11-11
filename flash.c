@@ -96,9 +96,9 @@ static bool file_size(int fd, size_t *size) {
 }
 
 // scans the mtd device for a good block
-static int scan_for_bad_block(struct flash *flash, off_t *start_offset) {
+static int is_block_bad(struct flash *flash, off_t *block_start_offset) {
     size_t block_count = flash->mtd.eb_cnt;
-    size_t block_start = *start_offset / flash->mtd.eb_size;
+    size_t block_start = *block_start_offset / flash->mtd.eb_size;
 
     bool good_block_found = false;
     for (size_t block = block_start ; (block < block_count) && !good_block_found; block++) {
@@ -108,7 +108,7 @@ static int scan_for_bad_block(struct flash *flash, off_t *start_offset) {
             return -1;
         } else if (rc == 0) {
             good_block_found = true;
-            *start_offset = block * flash->mtd.eb_size;
+            *block_start_offset = block * flash->mtd.eb_size;
         }
     }
 
@@ -161,9 +161,10 @@ int flash_write(const char *mtd_path, const char *image_path) {
     /*size_t block_count = flash.mtd.eb_cnt;*/
     size_t written_size = 0; // size in bytes
     off_t address = 0; // current address
+    off_t filepos = 0;
 
     while (written_size < image_size) {
-        int rc = scan_for_bad_block(&flash, &address);
+        int rc = is_block_bad(&flash, &address);
         if (rc == 1) {
             // no more good blocks found for device
             flash_destroy(&flash);
@@ -177,6 +178,7 @@ int flash_write(const char *mtd_path, const char *image_path) {
         }
 
         for (size_t bsize = 0; bsize < block_size; bsize += page_size) {
+            lseek(input_fd, filepos, SEEK_SET);
             ssize_t rbytes = read(input_fd, page_buffer + bsize, page_size);
             if (rbytes == 0) {
                 // EOF
@@ -188,7 +190,7 @@ int flash_write(const char *mtd_path, const char *image_path) {
                  return -EIO;
             }
 
-
+            filepos += rbytes;
         }
     }
 
