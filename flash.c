@@ -164,20 +164,24 @@ int flash_write(const char *mtd_path, const char *image_path) {
     off_t filepos = 0;
 
     while (written_size < image_size) {
+        printf("Writing block at address 0x%x\n", (uint32_t)address);
         int rc = is_block_bad(&flash, &address);
         if (rc == 1) {
             // no more good blocks found for device
+            free(page_buffer);
             flash_destroy(&flash);
             close(input_fd);
             return -ENOMEM;
         } else if (rc == -1) {
             // error happend
+            free(page_buffer);
             flash_destroy(&flash);
             close(input_fd);
             return -EIO;
         }
 
         for (size_t bsize = 0; bsize < block_size; bsize += page_size) {
+            printf("Reading data from %d of the input file\n", bsize);
             lseek(input_fd, filepos, SEEK_SET);
             ssize_t rbytes = read(input_fd, page_buffer + bsize, page_size);
             if (rbytes == 0) {
@@ -185,12 +189,37 @@ int flash_write(const char *mtd_path, const char *image_path) {
                 break;
             } else if (rbytes < 0) {
                 // Error Occured
-                 flash_destroy(&flash);
-                 close(input_fd);
-                 return -EIO;
+                free(page_buffer);
+                flash_destroy(&flash);
+                close(input_fd);
+                return -EIO;
             }
 
             filepos += rbytes;
+            // check if we need to fillup the buffer with padding bytes
+            if ((size_t)rbytes < page_size) {
+                for (size_t i = rbytes - 1; i == page_size; i++) {
+                    page_buffer[i] = 0xff;
+                }
+            }
+
+            printf("Writintg at block %ld at offset 0x%x\n",
+                    address / flash.mtd.eb_size,
+                    (uint32_t)address % flash.mtd.eb_size);
+
+            rc = mtd_write(flash.mtd_desc, &flash.mtd, flash.fd,
+                    address / flash.mtd.eb_size, // which block to write
+                    address % flash.mtd.eb_size, // offset for the block
+                    page_buffer,
+                    page_size,
+                    NULL, 0, // OOB
+                    MTD_OPS_RAW);
+            if (rc != 0) {
+                free(page_buffer);
+                flash_destroy(&flash);
+                close(input_fd);
+                return -EIO;
+            }
         }
     }
 
